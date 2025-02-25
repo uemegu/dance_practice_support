@@ -1,0 +1,103 @@
+
+/*
+/// CustomPainter で、与えられた各フレームの姿勢データをオーバーレイ描画する
+class PosePainter extends CustomPainter {
+  final List<List<double>> poseData;
+
+  // ここでは MoveNet の 17 キーポイントに対する例として、接続情報も定義
+  final List<List<int>> connections = [
+    [0, 1],
+    [0, 2],
+    [1, 3],
+    [2, 4],
+    [0, 5],
+    [0, 6],
+    [5, 7],
+    [7, 9],
+    [6, 8],
+    [8, 10],
+    [5, 6],
+    [5, 11],
+    [6, 12],
+    [11, 12],
+    [11, 13],
+    [13, 15],
+    [12, 14],
+    [14, 16],
+  ];
+
+  PosePainter(this.poseData);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final jointPaint = Paint()
+      ..color = Colors.red
+      ..strokeWidth = 4.0;
+    final bonePaint = Paint()
+      ..color = Colors.green
+      ..strokeWidth = 2.0;
+
+    // ボーン描画
+    for (var connection in connections) {
+      int idx1 = connection[0];
+      int idx2 = connection[1];
+      if (idx1 < poseData.length && idx2 < poseData.length) {
+        var joint1 = poseData[idx1];
+        var joint2 = poseData[idx2];
+        // ※場合によっては joint[0] と joint[1] の順序を入れ替える必要があるかも知れません
+        double x1 = joint1[1] * size.width;
+        double y1 = joint1[0] * size.height;
+        double x2 = joint2[1] * size.width;
+        double y2 = joint2[0] * size.height;
+        canvas.drawLine(Offset(x1, y1), Offset(x2, y2), bonePaint);
+      }
+    }
+
+    // キーポイント描画
+    for (var joint in poseData) {
+      final x = joint[1] * size.width;
+      final y = joint[0] * size.height;
+      canvas.drawCircle(Offset(x, y), 5.0, jointPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+*/
+
+/*
+  List<List<double>> estimatePose(Uint8List imageData) {
+    // 画像を前処理
+    Uint8List inputImage = _preprocessImage(imageData);
+
+    int width = size;
+    int height = size;
+    int channels = 3;
+
+// inputImage は Uint8List（各値は 0～255）とする
+    var input =
+        List.generate(1 * height * width * channels, (_) => 0, growable: false)
+            .reshape([1, height, width, channels]);
+
+    for (int i = 0; i < inputImage.length; i++) {
+      int pixelIndex = i ~/ channels; // ピクセルごとのインデックス
+      int row = pixelIndex ~/ width; // 行番号
+      int col = pixelIndex % width; // 列番号
+      int channel = i % channels; // チャンネル番号
+      // 正規化せず、元の uint8 の値をそのまま代入
+      input[0][row][col][channel] = inputImage[i];
+    }
+
+// 出力テンソルの生成（正しい形状 [1, 1, 17, 3] を用意）
+    var output = List.filled(1 * 1 * 17 * 3, 0.0).reshape([1, 1, 17, 3]);
+
+// 推論実行
+    _interpreter.run(input, output);
+
+// 出力結果から余分な次元を除去して [17, 3] にする
+    List<List<double>> pose = List<List<double>>.from(output[0][0]);
+
+    return pose; // 17個の関節の x, y, 信頼度
+  }
+  */
