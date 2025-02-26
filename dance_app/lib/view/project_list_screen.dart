@@ -126,7 +126,10 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
               backgroundColor: Colors.red,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

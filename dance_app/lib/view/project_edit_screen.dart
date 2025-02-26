@@ -74,12 +74,6 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       return;
     }
 
-    setState(() {
-      isProcessing = true;
-      processingProgress = 0.0;
-      processingStatus = 'Preparing processing...';
-    });
-
     try {
       // Process instructor video
       // await _processVideo(true);
@@ -91,18 +85,9 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
       setState(() {
         project.hasPrecomputedData = true;
         project.lastModified = DateTime.now();
-        processingStatus = 'Processing complete!';
       });
 
       await StorageUtil.saveProject(project);
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Videos processed successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
 
       // Navigate to comparison screen
       Navigator.pushReplacement(
