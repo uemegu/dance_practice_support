@@ -294,8 +294,8 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     await StorageUtil.saveDiscrepancyData(widget.project, discrepancyData);
 
     // プロジェクトの状態更新
-    widget.project.hasPrecomputedData = true;
     widget.project.lastModified = DateTime.now();
+    await StorageUtil.saveProject(widget.project);
 
     // TODO: プロジェクト情報の保存処理を追加（ProjectRepository等を利用）
 
