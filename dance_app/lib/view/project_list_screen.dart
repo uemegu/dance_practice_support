@@ -36,6 +36,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
 
       if (await file.exists()) {
         final contents = await file.readAsString();
+        print(contents);
         final List<dynamic> jsonData = jsonDecode(contents);
         projects = jsonData
             .map((projectData) => DanceProject.fromJson(projectData))

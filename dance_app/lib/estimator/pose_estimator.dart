@@ -69,6 +69,14 @@ class PoseEstimator {
     }
 
     // 複数出力に対応して推論実行
+    /*
+      出力は以下
+        pose_landmarks,  # (1, 195)
+        pose_world_landmarks,  # (1, 1)
+        segmentation_mask,  # (1, 256, 256, 1)
+        pose_landmarks_roi,  # (1, 64, 64, 39)
+        pose_detection,  # (1, 117)
+    */
     _interpreter.runForMultipleInputs([input], outputs);
 
     // 主要な出力である pose_landmarks を outputs[0] から取得（shapeは [1,195]）
