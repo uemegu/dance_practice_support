@@ -716,143 +716,242 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
   Widget _buildPlaybackButtons() {
     return Padding(
         padding: const EdgeInsets.only(bottom: 128),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          spacing: 8,
-          children: [
-            // 再生・一時停止ボタン
-            FloatingActionButton(
-              heroTag: "playPauseBtn",
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if (_instructorController != null &&
-                    _studentController != null) {
-                  setState(() {
-                    if (_instructorController!.value.isPlaying) {
-                      _instructorController!.pause();
-                      _studentController!.pause();
-                    } else {
-                      _startTime = DateTime.now()
-                          .subtract(_instructorController!.value.position);
-                      _instructorController!.play();
-                      _studentController!.play();
-                    }
-                  });
-                }
-              },
-              child: Icon(
-                _instructorController != null &&
-                        _instructorController!.value.isPlaying
-                    ? Icons.pause
-                    : Icons.play_arrow,
-                color: Colors.black,
-              ),
-            ),
-            // 停止・先頭に戻るボタン
-            FloatingActionButton(
-              heroTag: "stopBtn",
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if (_instructorController != null &&
-                    _studentController != null) {
-                  _startTime = DateTime.now();
-                  _instructorController!.seekTo(Duration.zero);
-
-                  // 生徒動画はオフセットを考慮して位置決め
-                  if (_studentVideoOffset < 0) {
-                    // 負のオフセットの場合、生徒動画の開始位置は0より後
-                    _studentController!
-                        .seekTo(Duration(milliseconds: -_studentVideoOffset));
-                  } else {
-                    // 正または0のオフセットの場合、生徒動画の開始位置は0
-                    _studentController!.seekTo(Duration.zero);
-                  }
-
-                  setState(() {
-                    _sliderValue = 0.0;
-                  });
-                }
-              },
-              child: const Icon(
-                Icons.stop,
-                color: Colors.black,
-              ),
-            ),
-            // スロー再生トグルボタン
-            FloatingActionButton(
-              heroTag: "slowMotionBtn",
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if (_instructorController != null &&
-                    _studentController != null) {
-                  double newSpeed =
-                      _instructorController!.value.playbackSpeed == 1.0
-                          ? 0.5
-                          : 1.0;
-                  _instructorController!.setPlaybackSpeed(newSpeed);
-                  _studentController!.setPlaybackSpeed(newSpeed);
-                  setState(() {});
-                }
-              },
-              child: Icon(
-                Icons.slow_motion_video,
-                color: _instructorController != null &&
-                        _instructorController!.value.playbackSpeed != 1.0
-                    ? Colors.blue
-                    : Colors.black,
-              ),
-            ),
-            // 姿勢推定実行ボタン
-            FloatingActionButton(
-              heroTag: "poseEstimationBtn",
-              backgroundColor: Colors.white,
-              onPressed: () {
-                _precomputePoseData();
-              },
-              child: const Icon(
-                Icons.autorenew,
-                color: Colors.black,
-              ),
-            ),
-            // ボーンだけ表示実行ボタン
-            FloatingActionButton(
-              heroTag: "onlyBornBtn",
-              backgroundColor: Colors.white,
-              onPressed: () {
-                setState(() {
-                  _onlyBorn = !_onlyBorn;
-                });
-              },
-              child: const Icon(
-                Icons.remove,
-                color: Colors.black,
-              ),
-            ),
-            // ボーンだけ表示実行ボタン
-            FloatingActionButton(
-              heroTag: "pickUpBtn",
-              backgroundColor: Colors.white,
-              onPressed: () {
-                if (discrepancyData.isNotEmpty) {
-                  final scenes = pickHighDiscrepancyScenes(discrepancyData,
-                      threshold: 0.3, minHighFrames: 2, gapTolerance: 3);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PickupScene(
-                        scenes: scenes,
-                        videoPath: widget.project.studentVideoPath!,
+        child: FittedBox(
+          fit: BoxFit.fitWidth,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                // 再生・一時停止ボタン
+                Column(mainAxisSize: MainAxisSize.min, children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // 再生・一時停止ボタン
+                      FloatingActionButton(
+                        heroTag: "playPauseBtn",
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        onPressed: () {
+                          if (_instructorController != null &&
+                              _studentController != null) {
+                            setState(() {
+                              if (_instructorController!.value.isPlaying) {
+                                _instructorController!.pause();
+                                _studentController!.pause();
+                              } else {
+                                _startTime = DateTime.now().subtract(
+                                    _instructorController!.value.position);
+                                _instructorController!.play();
+                                _studentController!.play();
+                              }
+                            });
+                          }
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _instructorController != null &&
+                                      _instructorController!.value.isPlaying
+                                  ? Icons.pause
+                                  : Icons.play_arrow,
+                              color: Colors.white,
+                            ),
+                            const Text(
+                              '再生/一時停止',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ).then((_) => StorageUtil.clearCacheImages());
-                }
-              },
-              child: const Icon(
-                Icons.dynamic_feed,
-                color: Colors.black,
-              ),
-            ),
-          ],
+                      const SizedBox(width: 8),
+                      // 停止・先頭に戻るボタン
+                      FloatingActionButton(
+                        heroTag: "stopBtn",
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        onPressed: () {
+                          if (_instructorController != null &&
+                              _studentController != null) {
+                            _startTime = DateTime.now();
+                            _instructorController!.seekTo(Duration.zero);
+                            _instructorController!.pause();
+                            _studentController!.pause();
+
+                            // 生徒動画はオフセットを考慮して位置決め
+                            if (_studentVideoOffset < 0) {
+                              // 負のオフセットの場合、生徒動画の開始位置は0より後
+                              _studentController!.seekTo(
+                                  Duration(milliseconds: -_studentVideoOffset));
+                            } else {
+                              // 正または0のオフセットの場合、生徒動画の開始位置は0
+                              _studentController!.seekTo(Duration.zero);
+                            }
+
+                            setState(() {
+                              _sliderValue = 0.0;
+                            });
+                          }
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.stop,
+                              color: Colors.white,
+                            ),
+                            const Text(
+                              '停止',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // スロー再生トグルボタン
+                      FloatingActionButton(
+                        heroTag: "slowMotionBtn",
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        onPressed: () {
+                          if (_instructorController != null &&
+                              _studentController != null) {
+                            double newSpeed =
+                                _instructorController!.value.playbackSpeed ==
+                                        1.0
+                                    ? 0.5
+                                    : 1.0;
+                            _instructorController!.setPlaybackSpeed(newSpeed);
+                            _studentController!.setPlaybackSpeed(newSpeed);
+                            setState(() {});
+                          }
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.slow_motion_video,
+                              color: _instructorController != null &&
+                                      _instructorController!
+                                              .value.playbackSpeed !=
+                                          1.0
+                                  ? Colors.blue
+                                  : Colors.white,
+                            ),
+                            const Text(
+                              'スロー',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8), // 行間のスペース
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // 姿勢推定実行ボタン
+                      FloatingActionButton(
+                        heroTag: "poseEstimationBtn",
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        onPressed: () {
+                          _precomputePoseData();
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.autorenew,
+                              color: Colors.white,
+                            ),
+                            const Text(
+                              '解析',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // ボーンだけ表示実行ボタン
+                      FloatingActionButton(
+                        heroTag: "onlyBornBtn",
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        onPressed: () {
+                          setState(() {
+                            _onlyBorn = !_onlyBorn;
+                          });
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.remove,
+                              color: Colors.white,
+                            ),
+                            const Text(
+                              'ボーンのみ',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // ボーンだけ表示実行ボタン
+                      FloatingActionButton(
+                        heroTag: "pickUpBtn",
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        onPressed: () {
+                          if (discrepancyData.isNotEmpty) {
+                            final scenes = pickHighDiscrepancyScenes(
+                                discrepancyData,
+                                threshold: 0.3,
+                                minHighFrames: 2,
+                                gapTolerance: 3);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PickupScene(
+                                  scenes: scenes,
+                                  videoPath: widget.project.studentVideoPath!,
+                                  instructorVideoPath:
+                                      widget.project.instructorVideoPath!,
+                                  studentVideoOffset: _studentVideoOffset,
+                                ),
+                              ),
+                            ).then((_) => StorageUtil.clearCacheImages());
+                          }
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.dynamic_feed,
+                              color: Colors.white,
+                            ),
+                            const Text(
+                              'ピックアップ',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ])
+              ]),
+            ],
+          ),
         ));
   }
 
