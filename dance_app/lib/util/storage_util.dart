@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dance_app/data/dance_project.dart';
+import 'package:dance_app/estimator/pose_estimator.dart';
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:path_provider/path_provider.dart';
 
 class StorageUtil {
@@ -35,7 +38,7 @@ class StorageUtil {
   }
 
   static Future<void> savePoseData(DanceProject project,
-      List<List<List<double>>> poseData, bool isInstructor) async {
+      List<PoseEstimationResult> poseData, bool isInstructor) async {
     final appDir = await getApplicationDocumentsDirectory();
     final dataDir = Directory('${appDir.path}/pose_data/${project.id}');
     if (!await dataDir.exists()) {
@@ -46,9 +49,10 @@ class StorageUtil {
         isInstructor ? 'instructor_pose_data.json' : 'student_pose_data.json';
     final file = File('${dataDir.path}/$fileName');
 
-    // Convert to JSON and save
-    final jsonData = jsonEncode(poseData);
-    await file.writeAsString(jsonData);
+    final jsonString =
+        jsonEncode(poseData.map((pose) => pose.toJson()).toList());
+
+    await file.writeAsString(jsonString);
 
     print("Pose data saved to ${file.path}");
   }
@@ -66,5 +70,45 @@ class StorageUtil {
     final jsonData = jsonEncode(discrepancyData);
     await file.writeAsString(jsonData);
     print("Discrepancy data saved to ${file.path}");
+  }
+
+  static Future<Uint8List?> getFrameAtTime(
+      String videoPath, double time) async {
+    final tempDir = await getTemporaryDirectory();
+    final frameFileName =
+        'frame_${videoPath.hashCode}_${time.toStringAsFixed(2)}.jpg';
+    final framePath = '${tempDir.path}/$frameFileName';
+
+    // FFmpegでフレーム抽出
+    final ffmpegCommand =
+        "-ss $time -i $videoPath -frames:v 1 -q:v 2 $framePath";
+    await FFmpegKit.execute(ffmpegCommand);
+
+    final file = File(framePath);
+    if (await file.exists()) {
+      return file.readAsBytes();
+    }
+    return null;
+  }
+
+  // 一時ファイルのクリア
+  static Future<void> clearCacheImages() async {
+    try {
+      final directory = await getTemporaryDirectory();
+      final tempDir = Directory(directory.path);
+
+      if (await tempDir.exists()) {
+        final files = tempDir.listSync();
+        for (var file in files) {
+          if (file is File &&
+              (file.path.endsWith('.jpg') || file.path.endsWith('.png'))) {
+            await file.delete();
+          }
+        }
+        print("Temporary image cache cleared.");
+      }
+    } catch (e) {
+      print("Error clearing cache: $e");
+    }
   }
 }

@@ -5,10 +5,12 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dance_app/data/dance_project.dart';
+import 'package:dance_app/data/scene.dart';
 import 'package:dance_app/estimator/pose_estimator.dart';
 import 'package:dance_app/painter/discrepancy_painter.dart';
 import 'package:dance_app/painter/pose_painter.dart';
 import 'package:dance_app/util/storage_util.dart';
+import 'package:dance_app/view/pickup_scene.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -35,13 +37,14 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
   double progress = 0.0;
 
   // ポーズデータ（インストラクターと生徒）
-  List<List<List<double>>> instructorPoseData = [];
-  List<List<List<double>>> studentPoseData = [];
+  List<PoseEstimationResult> instructorPoseData = [];
+  List<PoseEstimationResult> studentPoseData = [];
 
   final PoseEstimator _poseEstimator = PoseEstimator();
   Timer? _updateTimer;
   final fps = 10.0;
   DateTime? _startTime;
+  bool _onlyBorn = false;
   double _sliderValue = 0.0;
 
   // 相違度データ（0～1で正規化された値）
@@ -172,25 +175,19 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
         // インストラクターデータ読み込み
         final instructorContents = await instructorFile.readAsString();
         final List<dynamic> instructorJsonData = jsonDecode(instructorContents);
-        instructorPoseData = instructorJsonData.map((frameData) {
-          return (frameData as List<dynamic>).map((poseData) {
-            return (poseData as List<dynamic>)
-                .map((val) => (val as num).toDouble())
-                .toList();
-          }).toList();
-        }).toList();
+        instructorPoseData = instructorJsonData
+            .map((json) =>
+                PoseEstimationResult.fromJson(json as Map<String, dynamic>))
+            .toList();
         print("Instructor pose data loaded");
 
         // 生徒データ読み込み
         final studentContents = await studentFile.readAsString();
         final List<dynamic> studentJsonData = jsonDecode(studentContents);
-        studentPoseData = studentJsonData.map((frameData) {
-          return (frameData as List<dynamic>).map((poseData) {
-            return (poseData as List<dynamic>)
-                .map((val) => (val as num).toDouble())
-                .toList();
-          }).toList();
-        }).toList();
+        studentPoseData = studentJsonData
+            .map((json) =>
+                PoseEstimationResult.fromJson(json as Map<String, dynamic>))
+            .toList();
         print("Student pose data loaded");
 
         // 相違度データ読み込み
@@ -304,8 +301,40 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                                 AspectRatio(
                                   aspectRatio: _correctedAspectRatio(
                                       _instructorController!),
-                                  child: VideoPlayer(_instructorController!),
+                                  child: Transform.rotate(
+                                    angle: _rotationAngle(
+                                        _instructorController!), // 回転を適用
+                                    child: FittedBox(
+                                      fit: BoxFit.contain,
+                                      child: SizedBox(
+                                          width:
+                                              _isRotate(_instructorController!)
+                                                  ? _instructorController!
+                                                      .value.size.height
+                                                  : _instructorController!
+                                                      .value.size.width,
+                                          height:
+                                              _isRotate(_instructorController!)
+                                                  ? _instructorController!
+                                                      .value.size.width
+                                                  : _instructorController!
+                                                      .value.size.height,
+                                          child: RotatedBox(
+                                            quarterTurns: _instructorController!
+                                                    .value.rotationCorrection ~/
+                                                270, // 90°単位で回転
+                                            child: VideoPlayer(
+                                                _instructorController!),
+                                          )),
+                                    ),
+                                  ),
                                 ),
+                                if (_onlyBorn)
+                                  Positioned.fill(
+                                    child: Container(
+                                      color: Colors.black,
+                                    ),
+                                  ),
                                 // 姿勢推定オーバーレイ
                                 Positioned.fill(
                                   child: CustomPaint(
@@ -373,6 +402,12 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                                     ),
                                   ),
                                 ),
+                                if (_onlyBorn)
+                                  Positioned.fill(
+                                    child: Container(
+                                      color: Colors.black,
+                                    ),
+                                  ),
                                 // 姿勢推定オーバーレイ
                                 Positioned.fill(
                                   child: CustomPaint(
@@ -458,11 +493,14 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
         children: [
           // 相違度ヒートマップ表示
           if (discrepancyData.isNotEmpty)
-            SizedBox(
-              height: 10,
-              child: CustomPaint(
-                size: Size(MediaQuery.of(context).size.width, 10),
-                painter: DiscrepancyPainter(discrepancyData),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: SizedBox(
+                height: 10,
+                child: CustomPaint(
+                  size: Size(MediaQuery.of(context).size.width, 10),
+                  painter: DiscrepancyPainter(discrepancyData, heightRatio: 10),
+                ),
               ),
             ),
           // タイムラインスライダー
@@ -676,103 +714,146 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
   // 再生コントロールボタンの配置（既存のものをメソッド化）
   Widget _buildPlaybackButtons() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        // 再生・一時停止ボタン
-        FloatingActionButton(
-          heroTag: "playPauseBtn",
-          backgroundColor: Colors.white,
-          onPressed: () {
-            if (_instructorController != null && _studentController != null) {
-              setState(() {
-                if (_instructorController!.value.isPlaying) {
-                  _instructorController!.pause();
-                  _studentController!.pause();
-                } else {
-                  _startTime = DateTime.now()
-                      .subtract(_instructorController!.value.position);
-                  _instructorController!.play();
-                  _studentController!.play();
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 128),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          spacing: 8,
+          children: [
+            // 再生・一時停止ボタン
+            FloatingActionButton(
+              heroTag: "playPauseBtn",
+              backgroundColor: Colors.white,
+              onPressed: () {
+                if (_instructorController != null &&
+                    _studentController != null) {
+                  setState(() {
+                    if (_instructorController!.value.isPlaying) {
+                      _instructorController!.pause();
+                      _studentController!.pause();
+                    } else {
+                      _startTime = DateTime.now()
+                          .subtract(_instructorController!.value.position);
+                      _instructorController!.play();
+                      _studentController!.play();
+                    }
+                  });
                 }
-              });
-            }
-          },
-          child: Icon(
-            _instructorController != null &&
-                    _instructorController!.value.isPlaying
-                ? Icons.pause
-                : Icons.play_arrow,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 16),
-        // 停止・先頭に戻るボタン
-        FloatingActionButton(
-          heroTag: "stopBtn",
-          backgroundColor: Colors.white,
-          onPressed: () {
-            if (_instructorController != null && _studentController != null) {
-              _startTime = DateTime.now();
-              _instructorController!.seekTo(Duration.zero);
+              },
+              child: Icon(
+                _instructorController != null &&
+                        _instructorController!.value.isPlaying
+                    ? Icons.pause
+                    : Icons.play_arrow,
+                color: Colors.black,
+              ),
+            ),
+            // 停止・先頭に戻るボタン
+            FloatingActionButton(
+              heroTag: "stopBtn",
+              backgroundColor: Colors.white,
+              onPressed: () {
+                if (_instructorController != null &&
+                    _studentController != null) {
+                  _startTime = DateTime.now();
+                  _instructorController!.seekTo(Duration.zero);
 
-              // 生徒動画はオフセットを考慮して位置決め
-              if (_studentVideoOffset < 0) {
-                // 負のオフセットの場合、生徒動画の開始位置は0より後
-                _studentController!
-                    .seekTo(Duration(milliseconds: -_studentVideoOffset));
-              } else {
-                // 正または0のオフセットの場合、生徒動画の開始位置は0
-                _studentController!.seekTo(Duration.zero);
-              }
+                  // 生徒動画はオフセットを考慮して位置決め
+                  if (_studentVideoOffset < 0) {
+                    // 負のオフセットの場合、生徒動画の開始位置は0より後
+                    _studentController!
+                        .seekTo(Duration(milliseconds: -_studentVideoOffset));
+                  } else {
+                    // 正または0のオフセットの場合、生徒動画の開始位置は0
+                    _studentController!.seekTo(Duration.zero);
+                  }
 
-              setState(() {
-                _sliderValue = 0.0;
-              });
-            }
-          },
-          child: const Icon(
-            Icons.stop,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 16),
-        // スロー再生トグルボタン
-        FloatingActionButton(
-          heroTag: "slowMotionBtn",
-          backgroundColor: Colors.white,
-          onPressed: () {
-            if (_instructorController != null && _studentController != null) {
-              double newSpeed =
-                  _instructorController!.value.playbackSpeed == 1.0 ? 0.5 : 1.0;
-              _instructorController!.setPlaybackSpeed(newSpeed);
-              _studentController!.setPlaybackSpeed(newSpeed);
-              setState(() {});
-            }
-          },
-          child: Icon(
-            Icons.slow_motion_video,
-            color: _instructorController != null &&
-                    _instructorController!.value.playbackSpeed != 1.0
-                ? Colors.blue
-                : Colors.black,
-          ),
-        ),
-        const SizedBox(height: 16),
-        // 姿勢推定実行ボタン
-        FloatingActionButton(
-          heroTag: "poseEstimationBtn",
-          backgroundColor: Colors.white,
-          onPressed: () {
-            _precomputePoseData();
-          },
-          child: const Icon(
-            Icons.autorenew,
-            color: Colors.black,
-          ),
-        ),
-      ],
-    );
+                  setState(() {
+                    _sliderValue = 0.0;
+                  });
+                }
+              },
+              child: const Icon(
+                Icons.stop,
+                color: Colors.black,
+              ),
+            ),
+            // スロー再生トグルボタン
+            FloatingActionButton(
+              heroTag: "slowMotionBtn",
+              backgroundColor: Colors.white,
+              onPressed: () {
+                if (_instructorController != null &&
+                    _studentController != null) {
+                  double newSpeed =
+                      _instructorController!.value.playbackSpeed == 1.0
+                          ? 0.5
+                          : 1.0;
+                  _instructorController!.setPlaybackSpeed(newSpeed);
+                  _studentController!.setPlaybackSpeed(newSpeed);
+                  setState(() {});
+                }
+              },
+              child: Icon(
+                Icons.slow_motion_video,
+                color: _instructorController != null &&
+                        _instructorController!.value.playbackSpeed != 1.0
+                    ? Colors.blue
+                    : Colors.black,
+              ),
+            ),
+            // 姿勢推定実行ボタン
+            FloatingActionButton(
+              heroTag: "poseEstimationBtn",
+              backgroundColor: Colors.white,
+              onPressed: () {
+                _precomputePoseData();
+              },
+              child: const Icon(
+                Icons.autorenew,
+                color: Colors.black,
+              ),
+            ),
+            // ボーンだけ表示実行ボタン
+            FloatingActionButton(
+              heroTag: "onlyBornBtn",
+              backgroundColor: Colors.white,
+              onPressed: () {
+                setState(() {
+                  _onlyBorn = !_onlyBorn;
+                });
+              },
+              child: const Icon(
+                Icons.remove,
+                color: Colors.black,
+              ),
+            ),
+            // ボーンだけ表示実行ボタン
+            FloatingActionButton(
+              heroTag: "pickUpBtn",
+              backgroundColor: Colors.white,
+              onPressed: () {
+                if (discrepancyData.isNotEmpty) {
+                  final scenes = pickHighDiscrepancyScenes(discrepancyData,
+                      threshold: 0.3, minHighFrames: 2, gapTolerance: 3);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PickupScene(
+                        scenes: scenes,
+                        videoPath: widget.project.studentVideoPath!,
+                      ),
+                    ),
+                  ).then((_) => StorageUtil.clearCacheImages());
+                }
+              },
+              child: const Icon(
+                Icons.dynamic_feed,
+                color: Colors.black,
+              ),
+            ),
+          ],
+        ));
   }
 
   // 現在の位置を開始位置としてマーク
@@ -902,46 +983,6 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     }
   }
 
-  // 一時ファイルのクリア
-  Future<void> clearCacheImages() async {
-    try {
-      final directory = await getTemporaryDirectory();
-      final tempDir = Directory(directory.path);
-
-      if (await tempDir.exists()) {
-        final files = tempDir.listSync();
-        for (var file in files) {
-          if (file is File &&
-              (file.path.endsWith('.jpg') || file.path.endsWith('.png'))) {
-            await file.delete();
-          }
-        }
-        print("Temporary image cache cleared.");
-      }
-    } catch (e) {
-      print("Error clearing cache: $e");
-    }
-  }
-
-  // 指定時刻のフレーム取得
-  Future<Uint8List?> _getFrameAtTime(String videoPath, double time) async {
-    final tempDir = await getTemporaryDirectory();
-    final frameFileName =
-        'frame_${videoPath.hashCode}_${time.toStringAsFixed(2)}.jpg';
-    final framePath = '${tempDir.path}/$frameFileName';
-
-    // FFmpegでフレーム抽出
-    final ffmpegCommand =
-        "-ss $time -i $videoPath -frames:v 1 -q:v 2 $framePath";
-    await FFmpegKit.execute(ffmpegCommand);
-
-    final file = File(framePath);
-    if (await file.exists()) {
-      return file.readAsBytes();
-    }
-    return null;
-  }
-
   // ポーズデータの事前計算
   Future<void> _precomputePoseData() async {
     if (_instructorController == null ||
@@ -957,7 +998,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
       discrepancyData = [];
     });
 
-    await clearCacheImages();
+    await StorageUtil.clearCacheImages();
 
     // インストラクタービデオの処理
     final instructorDuration = _instructorController!.value.duration;
@@ -978,12 +1019,12 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
       final time = i / fps;
 
       // インストラクターフレーム処理
-      final instructorFrameBytes =
-          await _getFrameAtTime(widget.project.instructorVideoPath!, time);
+      final instructorFrameBytes = await StorageUtil.getFrameAtTime(
+          widget.project.instructorVideoPath!, time);
 
       // 生徒フレーム処理
-      final studentFrameBytes =
-          await _getFrameAtTime(widget.project.studentVideoPath!, time);
+      final studentFrameBytes = await StorageUtil.getFrameAtTime(
+          widget.project.studentVideoPath!, time);
 
       if (instructorFrameBytes != null && studentFrameBytes != null) {
         // 推論実行
@@ -995,12 +1036,13 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
         studentPoseData.add(studentPose);
 
         // 相違度計算
-        double discrepancy = _calculateDiscrepancy(instructorPose, studentPose);
+        double discrepancy = _calculateDiscrepancy(
+            instructorPose.poseWorldLandmarks, studentPose.poseWorldLandmarks);
         discrepancyData.add(discrepancy);
       } else {
         // 画像取得失敗時は空のデータを追加
-        instructorPoseData.add([]);
-        studentPoseData.add([]);
+        instructorPoseData = [];
+        studentPoseData = [];
         discrepancyData.add(1.0); // 最大相違度をデフォルトとする
       }
 
@@ -1011,9 +1053,10 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     }
 
     // データ保存
-    await StorageUtil.savePoseData(widget.project, instructorPoseData, true);
-    await StorageUtil.savePoseData(widget.project, studentPoseData, false);
+    await StorageUtil.savePoseData(widget.project, instructorPoseData!, true);
+    await StorageUtil.savePoseData(widget.project, studentPoseData!, false);
     await StorageUtil.saveDiscrepancyData(widget.project, discrepancyData);
+    await StorageUtil.clearCacheImages();
 
     // プロジェクトの状態更新
     widget.project.lastModified = DateTime.now();
@@ -1027,52 +1070,59 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
   }
 
   // 二つのポーズデータの相違度計算（0～1の値、0が完全一致、1が最大相違）
+
+  /// 二つのポーズデータの乖離率を計算（0～1の値、0が完全一致、1が最大乖離）
+  /// pose1, pose2 は List<PoseLandmark> 型で、全関節点を対象とする
   double _calculateDiscrepancy(
-      List<List<double>> pose1, List<List<double>> pose2) {
+      List<PoseLandmark> pose1, List<PoseLandmark> pose2) {
     if (pose1.isEmpty || pose2.isEmpty || pose1.length != pose2.length) {
-      return 1.0; // データ不整合時は最大相違
+      return 1.0; // データ不整合時は最大乖離
     }
 
-    double totalDiff = 0;
-    int validPoints = 0;
+    List<double> discrepancies = [];
 
-    // 主要な関節点のみを比較対象とする（全身の主要な関節）
-    List<int> keyPoints = [
-      11, 12, 13, 14, 15, 16, // 上半身（肩、肘、手首）
-      23, 24, 25, 26, 27, 28 // 下半身（股関節、膝、足首）
-    ];
+    List<int> keyPoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
 
+// 主要な関節点のみを比較対象とする（上半身：肩、肘、手首、下半身：股関節、膝、足首）
     for (int i in keyPoints) {
       if (i < pose1.length && i < pose2.length) {
-        // 各点の信頼度が一定以上の場合のみ計算
-        if (pose1[i][2] > 0.5 && pose2[i][2] > 0.5) {
-          // x, y 座標の差を計算
-          double xDiff = pose1[i][0] - pose2[i][0];
-          double yDiff = pose1[i][1] - pose2[i][1];
+        PoseLandmark p1 = pose1[i];
+        PoseLandmark p2 = pose2[i];
 
-          // ユークリッド距離を計算
-          double distance = sqrt(xDiff * xDiff + yDiff * yDiff);
-          totalDiff += distance;
-          validPoints++;
-        }
+        // 3次元ベクトルのノルムを計算
+        double norm1 = sqrt(p1.x * p1.x + p1.y * p1.y + p1.z * p1.z);
+        double norm2 = sqrt(p2.x * p2.x + p2.y * p2.y + p2.z * p2.z);
+
+        // ノルムが0の場合はスキップ
+        if (norm1 == 0 || norm2 == 0) continue;
+
+        // 3次元ベクトルの内積を計算し、コサイン類似度を求める
+        double dotProduct = p1.x * p2.x + p1.y * p2.y + p1.z * p2.z;
+        double cosineSimilarity = dotProduct / (norm1 * norm2);
+
+        // コサイン類似度が1なら完全一致、-1なら最大乖離となるように変換
+        double discrepancy = (1 - cosineSimilarity) / 2;
+        discrepancies.add(discrepancy);
       }
     }
 
-    if (validPoints == 0) return 1.0;
+    if (discrepancies.isEmpty) return 1.0;
 
-    // 正規化（画像サイズ256に対して最大距離は√2*256≒362）
-    int maxPossibleDiff = 362 * validPoints;
-    double normalizedDiff = totalDiff / maxPossibleDiff;
+    // 乖離率の大きい順にソート（大きいほど乖離が激しい）
+    discrepancies.sort((a, b) => b.compareTo(a));
 
-    // 0～1の範囲に収める
-    return normalizedDiff.clamp(0.0, 1.0);
+    // TOP3の乖離率の平均を算出
+    double totalTopDiscrepancy = discrepancies.take(3).reduce((a, b) => a + b);
+    double averageDiscrepancy = totalTopDiscrepancy / 3;
+    print(averageDiscrepancy);
+    return averageDiscrepancy;
   }
 
   // 現在のフレームのインストラクターポーズ取得
   List<List<double>> _getCurrentInstructorPoseData() {
     if (_instructorController == null ||
         !_instructorController!.value.isInitialized ||
-        instructorPoseData.isEmpty ||
+        instructorPoseData == null ||
         isProcessing ||
         !_instructorController!.value.isPlaying) {
       _instructorKalman = null;
@@ -1098,19 +1148,24 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
     // インデックス範囲チェック
     if (frameIndex < 0) frameIndex = 0;
-    if (frameIndex >= instructorPoseData.length)
+    if (frameIndex >= instructorPoseData.length) {
       frameIndex = instructorPoseData.length - 1;
+    }
 
     // ポーズデータ取得
-    final tmp = instructorPoseData[frameIndex];
+    final tmp = instructorPoseData[frameIndex].poseLandmarks;
 
     // カルマンフィルターで平滑化
     final result = List.generate(
         33,
         (index) => List.generate(
             3,
-            (index2) => _instructorKalman![index][index2]
-                .filtered(tmp[index][index2])));
+            (index2) => /*_instructorKalman![index][index2].filtered(*/
+                index2 == 0
+                    ? tmp[index].x
+                    : index2 == 1
+                        ? tmp[index].y
+                        : tmp[index].z)); //);
 
     return result;
   }
@@ -1119,7 +1174,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
   List<List<double>> _getCurrentStudentPoseData() {
     if (_studentController == null ||
         !_studentController!.value.isInitialized ||
-        studentPoseData.isEmpty ||
+        studentPoseData == null ||
         isProcessing ||
         !_studentController!.value.isPlaying) {
       _studentKalman = null;
@@ -1145,19 +1200,23 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
     // インデックス範囲チェック
     if (frameIndex < 0) frameIndex = 0;
-    if (frameIndex >= studentPoseData.length)
+    if (frameIndex >= studentPoseData.length) {
       frameIndex = studentPoseData.length - 1;
+    }
 
     // ポーズデータ取得
-    final tmp = studentPoseData[frameIndex];
+    final tmp = studentPoseData[frameIndex].poseLandmarks;
 
     // カルマンフィルターで平滑化
     final result = List.generate(
         33,
         (index) => List.generate(
             3,
-            (index2) =>
-                _studentKalman![index][index2].filtered(tmp[index][index2])));
+            (index2) => /*_studentKalman![index][index2].filtered(*/ index2 == 0
+                ? tmp[index].x
+                : index2 == 1
+                    ? tmp[index].y
+                    : tmp[index].z)); //);
 
     return result;
   }
@@ -1178,9 +1237,80 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
     // インデックス範囲チェック
     if (frameIndex < 0) frameIndex = 0;
-    if (frameIndex >= discrepancyData.length)
+    if (frameIndex >= discrepancyData.length) {
       frameIndex = discrepancyData.length - 1;
+    }
 
     return discrepancyData[frameIndex];
+  }
+
+  /// discrepancyData: 各フレームの乖離率（0～1）
+  /// threshold: 乖離率がこれ以上なら「高い」と判断する閾値
+  /// minHighFrames: 高い乖離が連続していると判断するための最小フレーム数
+  /// gapTolerance: シーン内で許容する低乖離（threshold 未満）の連続フレーム数
+  List<Scene> pickHighDiscrepancyScenes(
+    List<double> discrepancyData, {
+    required double threshold,
+    required int minHighFrames,
+    int gapTolerance = 2,
+  }) {
+    List<Scene> scenes = [];
+    bool inScene = false;
+    int sceneStart = 0;
+    int gapCounter = 0;
+
+    for (int i = 0; i < discrepancyData.length; i++) {
+      double value = discrepancyData[i];
+      if (value >= threshold) {
+        // 高い乖離が検出された場合
+        if (!inScene) {
+          // 新たにシーン開始
+          inScene = true;
+          sceneStart = i;
+          gapCounter = 0;
+        } else {
+          // 既にシーン中なら、低乖離のカウンターをリセット
+          gapCounter = 0;
+        }
+      } else {
+        // 閾値未満の乖離率の場合
+        if (inScene) {
+          gapCounter++;
+          // 許容ギャップを超えた場合はシーン終了
+          if (gapCounter >= gapTolerance) {
+            int sceneEnd = i - gapCounter; // 最後に高い乖離だったフレーム
+            if (sceneEnd - sceneStart + 1 >= minHighFrames) {
+              // シーン内の平均乖離率を計算
+              double sum = 0;
+              for (int j = sceneStart; j <= sceneEnd; j++) {
+                sum += discrepancyData[j];
+              }
+              double avg = sum / (sceneEnd - sceneStart + 1);
+              scenes.add(Scene(sceneStart, sceneEnd, avg));
+            }
+            inScene = false;
+            gapCounter = 0;
+          }
+        }
+      }
+    }
+
+    // ループ終了時にシーンが継続中の場合
+    if (inScene) {
+      int sceneEnd = discrepancyData.length - 1;
+      if (sceneEnd - sceneStart + 1 >= minHighFrames) {
+        double sum = 0;
+        for (int j = sceneStart; j <= sceneEnd; j++) {
+          sum += discrepancyData[j];
+        }
+        double avg = sum / (sceneEnd - sceneStart + 1);
+        scenes.add(Scene(sceneStart, sceneEnd, avg));
+      }
+    }
+
+    // 乖離率の平均が高い順にソート（降順）
+    scenes.sort((a, b) => b.averageDiscrepancy.compareTo(a.averageDiscrepancy));
+
+    return scenes;
   }
 }

@@ -76,6 +76,7 @@ class DiscrepancyPainter extends CustomPainter {
       );
     }
 
+/*
     // 閾値ラインを描画（例：0.5以上は注意が必要な閾値）
     final thresholdPaint = Paint()
       ..color = Colors.white.withOpacity(0.5)
@@ -90,6 +91,7 @@ class DiscrepancyPainter extends CustomPainter {
       Offset(size.width, thresholdY),
       thresholdPaint,
     );
+    */
   }
 
   @override

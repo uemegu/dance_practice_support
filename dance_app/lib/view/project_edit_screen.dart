@@ -145,7 +145,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
     }
 
     // Storage for pose data
-    List<List<List<double>>> allPoseData = [];
+    List<PoseEstimationResult> allPoseData = [];
 
     // Extract frames and process each one
     for (int i = 0; i < totalFrames; i++) {
@@ -172,7 +172,7 @@ class _ProjectEditScreenState extends State<ProjectEditScreen> {
         await frameFile.delete();
       } else {
         // If frame extraction failed, add empty pose data
-        allPoseData.add([]);
+        allPoseData = [];
       }
 
       // Update progress
