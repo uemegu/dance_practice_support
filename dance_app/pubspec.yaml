@@ -15,7 +15,7 @@ dependencies:
   tflite_flutter: ^0.11.0
   video_player: ^2.9.3
   image: ^4.5.3
-  ffmpeg_kit_flutter: ^6.0.3
+  ffmpeg_kit_flutter_new: ^2.0.0
   path_provider: ^2.1.5
   simple_kalman: ^1.0.2
   file_picker: ^9.0.1

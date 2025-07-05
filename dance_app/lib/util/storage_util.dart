@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dance_app/data/dance_project.dart';
 import 'package:dance_app/estimator/pose_estimator.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:path_provider/path_provider.dart';
 
 class StorageUtil {

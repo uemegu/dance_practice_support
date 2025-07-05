@@ -11,7 +11,7 @@ import 'package:dance_app/painter/discrepancy_painter.dart';
 import 'package:dance_app/painter/pose_painter.dart';
 import 'package:dance_app/util/storage_util.dart';
 import 'package:dance_app/view/pickup_scene.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:simple_kalman/simple_kalman.dart';
