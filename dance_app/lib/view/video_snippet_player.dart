@@ -169,7 +169,7 @@ class _VideoSnippetPlayerState extends State<VideoSnippetPlayer> {
                                         child: RotatedBox(
                                           quarterTurns: _instructorController
                                                   .value.rotationCorrection ~/
-                                              270, // 90°単位で回転
+                                              -90, // 90°単位で回転
                                           child: VideoPlayer(
                                               _instructorController),
                                         )),
@@ -207,7 +207,7 @@ class _VideoSnippetPlayerState extends State<VideoSnippetPlayer> {
                                         child: RotatedBox(
                                           quarterTurns: _studentController
                                                   .value.rotationCorrection ~/
-                                              270, // 90°単位で回転
+                                              -90, // 90°単位で回転
                                           child:
                                               VideoPlayer(_studentController),
                                         )),
