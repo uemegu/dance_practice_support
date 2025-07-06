@@ -225,6 +225,7 @@ class _VideoSnippetPlayerState extends State<VideoSnippetPlayer> {
                     padding: const EdgeInsets.all(8.0),
                     child: _buildDiscrepancyAdvice(),
                   ),
+                  const SizedBox(height: 100), // 再生ボタンが重ならないようにスペースを確保
                 ],
               )
             : const CircularProgressIndicator(color: Colors.white),
