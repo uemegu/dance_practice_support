@@ -6,6 +6,7 @@ import 'package:dance_app/data/dance_project.dart';
 import 'package:dance_app/estimator/pose_estimator.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:dance_app/data/frame_discrepancy_result.dart';
 
 class StorageUtil {
   static Future<void> saveProject(DanceProject project) async {
@@ -59,7 +60,7 @@ class StorageUtil {
 
   // 相違度データ保存
   static Future<void> saveDiscrepancyData(
-      DanceProject project, List<double> discrepancyData) async {
+      DanceProject project, List<FrameDiscrepancyResult> discrepancyResults) async {
     final appDir = await getApplicationDocumentsDirectory();
     final dataDir = Directory('${appDir.path}/pose_data/${project.id}');
     if (!await dataDir.exists()) {
@@ -67,7 +68,7 @@ class StorageUtil {
     }
 
     final file = File('${dataDir.path}/discrepancy_data_${project.id}.json');
-    final jsonData = jsonEncode(discrepancyData);
+    final jsonData = jsonEncode(discrepancyResults.map((e) => e.toJson()).toList());
     await file.writeAsString(jsonData);
     print("Discrepancy data saved to ${file.path}");
   }

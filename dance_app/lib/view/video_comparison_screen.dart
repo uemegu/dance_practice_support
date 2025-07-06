@@ -63,6 +63,55 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
   // 両動画のオフセット（ミリ秒）
   int _studentVideoOffset = 0;
 
+  // 自動位置合わせを実行するメソッド
+  Future<void> _performAutoAlignment() async {
+    setState(() {
+      isProcessing = true;
+      progress = 0.0;
+    });
+
+    try {
+      // 動きの信号を生成
+      final instructorSignal = _calculateMovementSignal(instructorPoseData);
+      final studentSignal = _calculateMovementSignal(studentPoseData);
+
+      // 最適なオフセットを計算
+      final optimalOffset =
+          _findOptimalOffset(instructorSignal, studentSignal, fps);
+
+      setState(() {
+        _studentVideoOffset = optimalOffset;
+      });
+
+      await _saveAlignment();
+
+      // 乖離率データを再計算
+      await _precomputePoseData();
+
+      // 再生位置をリセットしてUIを更新
+      _resetPlaybackToStart();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('自動位置合わせが完了しました。オフセット: ${optimalOffset}ms'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print("Error during auto alignment: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('自動位置合わせ中にエラーが発生しました: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        isProcessing = false;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -137,7 +186,9 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     });
 
     // 事前計算されたポーズデータを読み込む
+    print("[_initializeVideos] Attempting to load precomputed data...");
     bool dataLoaded = await _loadPrecomputedData();
+    print("[_initializeVideos] dataLoaded: $dataLoaded, project.hasPrecomputedData: ${widget.project.hasPrecomputedData}");
 
     if (!dataLoaded && widget.project.hasPrecomputedData) {
       // データがあるはずなのに読み込めなかった場合
@@ -157,6 +208,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
   // 事前計算されたデータ読み込み
   Future<bool> _loadPrecomputedData() async {
+    print("[_loadPrecomputedData] Starting data load...");
     final directory = await getApplicationDocumentsDirectory();
 
     // インストラクターデータ
@@ -169,9 +221,14 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     final discrepancyFile = File(
         '${directory.path}/pose_data/${widget.project.id}/discrepancy_data_${widget.project.id}.json');
 
+    print("[_loadPrecomputedData] Checking file existence...");
     bool allFilesExist = await instructorFile.exists() &&
         await studentFile.exists() &&
         await discrepancyFile.exists();
+    print("[_loadPrecomputedData] instructorFile exists: ${await instructorFile.exists()}");
+    print("[_loadPrecomputedData] studentFile exists: ${await studentFile.exists()}");
+    print("[_loadPrecomputedData] discrepancyFile exists: ${await discrepancyFile.exists()}");
+    print("[_loadPrecomputedData] All files exist: $allFilesExist");
 
     if (allFilesExist) {
       try {
@@ -182,7 +239,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
             .map((json) =>
                 PoseEstimationResult.fromJson(json as Map<String, dynamic>))
             .toList();
-        print("Instructor pose data loaded");
+        print("[_loadPrecomputedData] Instructor pose data loaded");
 
         // 生徒データ読み込み
         final studentContents = await studentFile.readAsString();
@@ -191,27 +248,29 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
             .map((json) =>
                 PoseEstimationResult.fromJson(json as Map<String, dynamic>))
             .toList();
-        print("Student pose data loaded");
+        print("[_loadPrecomputedData] Student pose data loaded");
 
         // 相違度データ読み込み
         final discrepancyContents = await discrepancyFile.readAsString();
-        final List<dynamic> discrepancyJsonData =
-            jsonDecode(discrepancyContents);
+        final List<dynamic> discrepancyJsonData = jsonDecode(discrepancyContents);
         fullDiscrepancyResults = discrepancyJsonData
             .map((json) =>
                 FrameDiscrepancyResult.fromJson(json as Map<String, dynamic>))
             .toList();
         discrepancyData =
             fullDiscrepancyResults.map((e) => e.overallDiscrepancy).toList();
-        print("Discrepancy data loaded");
+        print("[_loadPrecomputedData] Discrepancy data loaded. First 5 entries: ${fullDiscrepancyResults.take(5).toList()}");
 
+        print("[_loadPrecomputedData] Data load successful.");
         return true;
-      } catch (e) {
-        print("Error loading data: $e");
+      } catch (e, stacktrace) {
+        print("[_loadPrecomputedData] Error loading data: $e");
+        print("[_loadPrecomputedData] Stacktrace: $stacktrace");
         return false;
       }
     }
 
+    print("[_loadPrecomputedData] Data load failed: Files not found.");
     return false;
   }
 
@@ -282,6 +341,12 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
               onPressed: _saveAlignment,
               tooltip: '位置合わせを保存',
             ),
+          // 自動位置合わせボタン
+          IconButton(
+            icon: const Icon(Icons.auto_awesome, color: Colors.white),
+            onPressed: isProcessing ? null : _performAutoAlignment,
+            tooltip: '自動位置合わせ',
+          ),
         ],
       ),
       body: _instructorController == null ||
@@ -782,24 +847,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                         onPressed: () {
                           if (_instructorController != null &&
                               _studentController != null) {
-                            _startTime = DateTime.now();
-                            _instructorController!.seekTo(Duration.zero);
-                            _instructorController!.pause();
-                            _studentController!.pause();
-
-                            // 生徒動画はオフセットを考慮して位置決め
-                            if (_studentVideoOffset < 0) {
-                              // 負のオフセットの場合、生徒動画の開始位置は0より後
-                              _studentController!.seekTo(
-                                  Duration(milliseconds: -_studentVideoOffset));
-                            } else {
-                              // 正または0のオフセットの場合、生徒動画の開始位置は0
-                              _studentController!.seekTo(Duration.zero);
-                            }
-
-                            setState(() {
-                              _sliderValue = 0.0;
-                            });
+                            _resetPlaybackToStart();
                           }
                         },
                         child: Column(
@@ -933,7 +981,8 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                                   instructorVideoPath:
                                       widget.project.instructorVideoPath!,
                                   studentVideoOffset: _studentVideoOffset,
-                                  fullDiscrepancyResults: fullDiscrepancyResults,
+                                  fullDiscrepancyResults:
+                                      fullDiscrepancyResults,
                                 ),
                               ),
                             ).then((_) => StorageUtil.clearCacheImages());
@@ -1005,6 +1054,28 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
         _studentVideoOffset = newPos - instructorMs;
       });
     }
+  }
+
+  // 再生位置を同期された開始位置にリセットする
+  void _resetPlaybackToStart() {
+    if (_instructorController == null || _studentController == null) return;
+
+    _instructorController!.seekTo(Duration.zero);
+    _instructorController!.pause();
+    _studentController!.pause();
+
+    // 生徒動画はオフセットを考慮して位置決め
+    if (_studentVideoOffset < 0) {
+      // 負のオフセットの場合、生徒動画の開始位置は0より後
+      _studentController!.seekTo(Duration(milliseconds: -_studentVideoOffset));
+    } else {
+      // 正または0のオフセットの場合、生徒動画の開始位置は0
+      _studentController!.seekTo(Duration.zero);
+    }
+
+    setState(() {
+      _sliderValue = 0.0;
+    });
   }
 
   // 位置合わせの保存処理
@@ -1165,11 +1236,12 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     // データ保存
     await StorageUtil.savePoseData(widget.project, instructorPoseData!, true);
     await StorageUtil.savePoseData(widget.project, studentPoseData!, false);
-    await StorageUtil.saveDiscrepancyData(widget.project, discrepancyData);
+    await StorageUtil.saveDiscrepancyData(widget.project, fullDiscrepancyResults);
     await StorageUtil.clearCacheImages();
 
     // プロジェクトの状態更新
     widget.project.lastModified = DateTime.now();
+    widget.project.hasPrecomputedData = true; // データが計算されたことをマーク
     await StorageUtil.saveProject(widget.project);
 
     // TODO: プロジェクト情報の保存処理を追加（ProjectRepository等を利用）
@@ -1264,15 +1336,9 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
             (_) => SimpleKalman(errorMeasure: 15, errorEstimate: 150, q: 1)));
 
     // 現在のフレームインデックス計算
-    int frameIndex = 0;
-    if (_instructorController?.value.playbackSpeed == 1.0) {
-      final currentTime = DateTime.now().difference(_startTime!).inMilliseconds;
-      frameIndex = (currentTime * fps / 1000).floor();
-    } else {
-      frameIndex =
-          (_instructorController!.value.position.inMilliseconds * fps / 1000)
-              .floor();
-    }
+    int frameIndex =
+        (_instructorController!.value.position.inMilliseconds * fps / 1000)
+            .floor();
 
     // インデックス範囲チェック
     if (frameIndex < 0) frameIndex = 0;
@@ -1316,15 +1382,9 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
             (_) => SimpleKalman(errorMeasure: 15, errorEstimate: 150, q: 1)));
 
     // 現在のフレームインデックス計算
-    int frameIndex = 0;
-    if (_studentController?.value.playbackSpeed == 1.0) {
-      final currentTime = DateTime.now().difference(_startTime!).inMilliseconds;
-      frameIndex = (currentTime * fps / 1000).floor();
-    } else {
-      frameIndex =
-          (_studentController!.value.position.inMilliseconds * fps / 1000)
-              .floor();
-    }
+    int frameIndex =
+        (_studentController!.value.position.inMilliseconds * fps / 1000)
+            .floor();
 
     // インデックス範囲チェック
     if (frameIndex < 0) frameIndex = 0;
@@ -1440,5 +1500,74 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     scenes.sort((a, b) => b.averageDiscrepancy.compareTo(a.averageDiscrepancy));
 
     return scenes;
+  }
+
+  /// ポーズデータから動きの時系列信号を計算する
+  /// 各フレームにおける全関節点の位置変化の合計を信号とする
+  List<double> _calculateMovementSignal(List<PoseEstimationResult> poseData) {
+    List<double> signal = [];
+    if (poseData.isEmpty) return signal;
+
+    // 最初のフレームのポーズを基準とする
+    PoseEstimationResult? previousPose = poseData[0];
+
+    for (int i = 0; i < poseData.length; i++) {
+      PoseEstimationResult currentPose = poseData[i];
+      double movement = 0.0;
+
+      if (previousPose != null) {
+        for (int j = 0; j < currentPose.poseWorldLandmarks.length; j++) {
+          if (j < previousPose.poseWorldLandmarks.length) {
+            PoseLandmark p1 = previousPose.poseWorldLandmarks[j];
+            PoseLandmark p2 = currentPose.poseWorldLandmarks[j];
+            // 3次元空間での距離を計算
+            movement += sqrt(pow(p2.x - p1.x, 2) +
+                pow(p2.y - p1.y, 2) +
+                pow(p2.z - p1.z, 2));
+          }
+        }
+      }
+      signal.add(movement);
+      previousPose = currentPose;
+    }
+    return signal;
+  }
+
+  /// 2つの信号間の最適なオフセットを相互相関を用いて見つける
+  /// 戻り値はミリ秒単位のオフセット
+  int _findOptimalOffset(
+      List<double> signal1, List<double> signal2, double frameRate) {
+    if (signal1.isEmpty || signal2.isEmpty) return 0;
+
+    int maxLag =
+        (min(signal1.length, signal2.length) * 0.5).floor(); // 最大ラグを信号長の半分に制限
+    double maxCorrelation = -1.0;
+    int optimalOffset = 0;
+
+    // 相互相関を計算
+    for (int lag = -maxLag; lag <= maxLag; lag++) {
+      double correlation = 0.0;
+      int count = 0;
+
+      for (int i = 0; i < signal1.length; i++) {
+        int j = i + lag;
+        if (j >= 0 && j < signal2.length) {
+          // ここでは単純な積和を相関の指標とする
+          // より厳密にはピアソン相関係数などを用いるべきだが、計算コストを考慮し簡略化
+          correlation += signal1[i] * signal2[j];
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        correlation /= count; // 平均化
+        if (correlation > maxCorrelation) {
+          maxCorrelation = correlation;
+          optimalOffset = lag;
+        }
+      }
+    }
+    // フレーム単位のオフセットをミリ秒に変換
+    return (optimalOffset * (1000 / frameRate)).round();
   }
 }
