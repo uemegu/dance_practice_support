@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:simple_kalman/simple_kalman.dart';
 import 'package:video_player/video_player.dart';
+import 'package:dance_app/data/frame_discrepancy_result.dart';
 
 class VideoComparisonScreen extends StatefulWidget {
   final DanceProject project;
@@ -49,6 +50,8 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
   // 相違度データ（0～1で正規化された値）
   List<double> discrepancyData = [];
+  // 各フレームの詳細な乖離率データ
+  List<FrameDiscrepancyResult> fullDiscrepancyResults = [];
 
   // カルマンフィルター
   List<List<SimpleKalman>>? _instructorKalman;
@@ -194,8 +197,12 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
         final discrepancyContents = await discrepancyFile.readAsString();
         final List<dynamic> discrepancyJsonData =
             jsonDecode(discrepancyContents);
+        fullDiscrepancyResults = discrepancyJsonData
+            .map((json) =>
+                FrameDiscrepancyResult.fromJson(json as Map<String, dynamic>))
+            .toList();
         discrepancyData =
-            discrepancyJsonData.map((val) => (val as num).toDouble()).toList();
+            fullDiscrepancyResults.map((e) => e.overallDiscrepancy).toList();
         print("Discrepancy data loaded");
 
         return true;
@@ -911,9 +918,9 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                         backgroundColor: Colors.transparent,
                         elevation: 0,
                         onPressed: () {
-                          if (discrepancyData.isNotEmpty) {
+                          if (fullDiscrepancyResults.isNotEmpty) {
                             final scenes = pickHighDiscrepancyScenes(
-                                discrepancyData,
+                                fullDiscrepancyResults,
                                 threshold: 0.3,
                                 minHighFrames: 2,
                                 gapTolerance: 3);
@@ -926,6 +933,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                                   instructorVideoPath:
                                       widget.project.instructorVideoPath!,
                                   studentVideoOffset: _studentVideoOffset,
+                                  fullDiscrepancyResults: fullDiscrepancyResults,
                                 ),
                               ),
                             ).then((_) => StorageUtil.clearCacheImages());
@@ -1135,14 +1143,17 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
         studentPoseData.add(studentPose);
 
         // 相違度計算
-        double discrepancy = _calculateDiscrepancy(
+        FrameDiscrepancyResult frameDiscrepancy = _calculateDiscrepancy(
             instructorPose.poseWorldLandmarks, studentPose.poseWorldLandmarks);
-        discrepancyData.add(discrepancy);
+        discrepancyData.add(frameDiscrepancy.overallDiscrepancy);
+        fullDiscrepancyResults.add(frameDiscrepancy);
       } else {
         // 画像取得失敗時は空のデータを追加
         instructorPoseData = [];
         studentPoseData = [];
         discrepancyData.add(1.0); // 最大相違度をデフォルトとする
+        fullDiscrepancyResults.add(FrameDiscrepancyResult(
+            overallDiscrepancy: 1.0, partDiscrepancies: {}));
       }
 
       // 進捗更新
@@ -1172,49 +1183,67 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
   /// 二つのポーズデータの乖離率を計算（0～1の値、0が完全一致、1が最大乖離）
   /// pose1, pose2 は List<PoseLandmark> 型で、全関節点を対象とする
-  double _calculateDiscrepancy(
+  FrameDiscrepancyResult _calculateDiscrepancy(
       List<PoseLandmark> pose1, List<PoseLandmark> pose2) {
     if (pose1.isEmpty || pose2.isEmpty || pose1.length != pose2.length) {
-      return 1.0; // データ不整合時は最大乖離
+      return FrameDiscrepancyResult(
+          overallDiscrepancy: 1.0, partDiscrepancies: {}); // データ不整合時は最大乖離
     }
 
-    List<double> discrepancies = [];
+    Map<String, double> partDiscrepancies = {};
+    List<double> overallDiscrepancies = [];
 
-    List<int> keyPoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+    // 部位ごとの関節点グループ
+    Map<String, List<int>> bodyParts = {
+      'left_arm': [11, 13, 15], // left_shoulder, left_elbow, left_wrist
+      'right_arm': [12, 14, 16], // right_shoulder, right_elbow, right_wrist
+      'left_leg': [23, 25, 27], // left_hip, left_knee, left_ankle
+      'right_leg': [24, 26, 28], // right_hip, right_knee, right_ankle
+      'torso': [11, 12, 23, 24], // shoulders and hips
+    };
 
-// 主要な関節点のみを比較対象とする（上半身：肩、肘、手首、下半身：股関節、膝、足首）
-    for (int i in keyPoints) {
-      if (i < pose1.length && i < pose2.length) {
-        PoseLandmark p1 = pose1[i];
-        PoseLandmark p2 = pose2[i];
+    bodyParts.forEach((partName, indices) {
+      List<double> partDiscrepancyValues = [];
+      for (int i in indices) {
+        if (i < pose1.length && i < pose2.length) {
+          PoseLandmark p1 = pose1[i];
+          PoseLandmark p2 = pose2[i];
 
-        // 3次元ベクトルのノルムを計算
-        double norm1 = sqrt(p1.x * p1.x + p1.y * p1.y + p1.z * p1.z);
-        double norm2 = sqrt(p2.x * p2.x + p2.y * p2.y + p2.z * p2.z);
+          double norm1 = sqrt(p1.x * p1.x + p1.y * p1.y + p1.z * p1.z);
+          double norm2 = sqrt(p2.x * p2.x + p2.y * p2.y + p2.z * p2.z);
 
-        // ノルムが0の場合はスキップ
-        if (norm1 == 0 || norm2 == 0) continue;
+          if (norm1 == 0 || norm2 == 0) {
+            partDiscrepancyValues.add(1.0); // ランドマークが見つからない場合は最大乖離
+            continue;
+          }
 
-        // 3次元ベクトルの内積を計算し、コサイン類似度を求める
-        double dotProduct = p1.x * p2.x + p1.y * p2.y + p1.z * p2.z;
-        double cosineSimilarity = dotProduct / (norm1 * norm2);
-
-        // コサイン類似度が1なら完全一致、-1なら最大乖離となるように変換
-        double discrepancy = (1 - cosineSimilarity) / 2;
-        discrepancies.add(discrepancy);
+          double dotProduct = p1.x * p2.x + p1.y * p2.y + p1.z * p2.z;
+          double cosineSimilarity = dotProduct / (norm1 * norm2);
+          double discrepancy = (1 - cosineSimilarity) / 2;
+          partDiscrepancyValues.add(discrepancy);
+        } else {
+          partDiscrepancyValues.add(1.0); // ランドマークが見つからない場合は最大乖離
+        }
       }
+      if (partDiscrepancyValues.isNotEmpty) {
+        double avgPartDiscrepancy =
+            partDiscrepancyValues.reduce((a, b) => a + b) /
+                partDiscrepancyValues.length;
+        partDiscrepancies[partName] = avgPartDiscrepancy;
+        overallDiscrepancies.add(avgPartDiscrepancy);
+      }
+    });
+
+    double overallAverageDiscrepancy = 1.0;
+    if (overallDiscrepancies.isNotEmpty) {
+      overallAverageDiscrepancy = overallDiscrepancies.reduce((a, b) => a + b) /
+          overallDiscrepancies.length;
     }
 
-    if (discrepancies.isEmpty) return 1.0;
-
-    // 乖離率の大きい順にソート（大きいほど乖離が激しい）
-    discrepancies.sort((a, b) => b.compareTo(a));
-
-    // TOP3の乖離率の平均を算出
-    double totalTopDiscrepancy = discrepancies.take(3).reduce((a, b) => a + b);
-    double averageDiscrepancy = totalTopDiscrepancy / 3;
-    print(averageDiscrepancy);
-    return averageDiscrepancy;
+    return FrameDiscrepancyResult(
+      overallDiscrepancy: overallAverageDiscrepancy,
+      partDiscrepancies: partDiscrepancies,
+    );
   }
 
   // 現在のフレームのインストラクターポーズ取得
@@ -1348,7 +1377,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
   /// minHighFrames: 高い乖離が連続していると判断するための最小フレーム数
   /// gapTolerance: シーン内で許容する低乖離（threshold 未満）の連続フレーム数
   List<Scene> pickHighDiscrepancyScenes(
-    List<double> discrepancyData, {
+    List<FrameDiscrepancyResult> fullDiscrepancyResults, {
     required double threshold,
     required int minHighFrames,
     int gapTolerance = 2,
@@ -1358,8 +1387,8 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     int sceneStart = 0;
     int gapCounter = 0;
 
-    for (int i = 0; i < discrepancyData.length; i++) {
-      double value = discrepancyData[i];
+    for (int i = 0; i < fullDiscrepancyResults.length; i++) {
+      double value = fullDiscrepancyResults[i].overallDiscrepancy;
       if (value >= threshold) {
         // 高い乖離が検出された場合
         if (!inScene) {
@@ -1382,7 +1411,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
               // シーン内の平均乖離率を計算
               double sum = 0;
               for (int j = sceneStart; j <= sceneEnd; j++) {
-                sum += discrepancyData[j];
+                sum += fullDiscrepancyResults[j].overallDiscrepancy;
               }
               double avg = sum / (sceneEnd - sceneStart + 1);
               scenes.add(Scene(sceneStart, sceneEnd, avg));
@@ -1396,11 +1425,11 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
     // ループ終了時にシーンが継続中の場合
     if (inScene) {
-      int sceneEnd = discrepancyData.length - 1;
+      int sceneEnd = fullDiscrepancyResults.length - 1;
       if (sceneEnd - sceneStart + 1 >= minHighFrames) {
         double sum = 0;
         for (int j = sceneStart; j <= sceneEnd; j++) {
-          sum += discrepancyData[j];
+          sum += fullDiscrepancyResults[j].overallDiscrepancy;
         }
         double avg = sum / (sceneEnd - sceneStart + 1);
         scenes.add(Scene(sceneStart, sceneEnd, avg));

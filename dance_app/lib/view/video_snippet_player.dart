@@ -4,6 +4,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:dance_app/data/frame_discrepancy_result.dart';
+import 'package:dance_app/view/video_comparison_screen.dart'; // landmarkNames を使用するため
 
 class VideoSnippetPlayer extends StatefulWidget {
   final String instructorVideoPath;
@@ -11,6 +13,7 @@ class VideoSnippetPlayer extends StatefulWidget {
   final double startSeconds;
   final double endSeconds;
   final int studentVideoOffset;
+  final List<FrameDiscrepancyResult> fullDiscrepancyResults;
 
   const VideoSnippetPlayer({
     Key? key,
@@ -19,6 +22,7 @@ class VideoSnippetPlayer extends StatefulWidget {
     required this.startSeconds,
     required this.endSeconds,
     required this.studentVideoOffset,
+    required this.fullDiscrepancyResults,
   }) : super(key: key);
 
   @override
@@ -29,6 +33,7 @@ class _VideoSnippetPlayerState extends State<VideoSnippetPlayer> {
   late VideoPlayerController _instructorController;
   late VideoPlayerController _studentController;
   bool _isInitialized = false;
+  final fps = 10.0;
 
   @override
   void initState() {
@@ -103,154 +108,228 @@ class _VideoSnippetPlayerState extends State<VideoSnippetPlayer> {
         180; // ラジアン変換
   }
 
+  // 現在のフレームの乖離率データを取得
+  FrameDiscrepancyResult? _getCurrentFrameDiscrepancyResult() {
+    if (!widget.fullDiscrepancyResults.isNotEmpty ||
+        !_instructorController.value.isInitialized) {
+      return null;
+    }
+
+    final currentPositionMs =
+        _instructorController.value.position.inMilliseconds;
+    final frameIndex = ((currentPositionMs / 1000.0) * fps).floor();
+
+    if (frameIndex >= 0 && frameIndex < widget.fullDiscrepancyResults.length) {
+      return widget.fullDiscrepancyResults[frameIndex];
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: const Text('Check Scene'),
-          backgroundColor: Colors.black,
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
+      appBar: AppBar(
+        title: const Text('Check Scene'),
         backgroundColor: Colors.black,
-        body: Center(
-          child: _isInitialized
-              ? Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text("INSTRUCTOR",
-                              style: TextStyle(color: Colors.white)),
-                          AspectRatio(
-                            aspectRatio:
-                                _correctedAspectRatio(_instructorController),
-                            child: Transform.rotate(
-                              angle: _rotationAngle(
-                                  _instructorController), // 回転を適用
-                              child: FittedBox(
-                                fit: BoxFit.contain,
-                                child: SizedBox(
-                                    width: _isRotate(_instructorController)
-                                        ? _instructorController
-                                            .value.size.height
-                                        : _instructorController
-                                            .value.size.width,
-                                    height: _isRotate(_instructorController)
-                                        ? _instructorController.value.size.width
-                                        : _instructorController
-                                            .value.size.height,
-                                    child: RotatedBox(
-                                      quarterTurns: _instructorController
-                                              .value.rotationCorrection ~/
-                                          270, // 90°単位で回転
-                                      child: VideoPlayer(_instructorController),
-                                    )),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      backgroundColor: Colors.black,
+      body: Center(
+        child: _isInitialized
+            ? Column(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text("INSTRUCTOR",
+                                  style: TextStyle(color: Colors.white)),
+                              AspectRatio(
+                                aspectRatio: _correctedAspectRatio(
+                                    _instructorController),
+                                child: Transform.rotate(
+                                  angle: _rotationAngle(
+                                      _instructorController), // 回転を適用
+                                  child: FittedBox(
+                                    fit: BoxFit.contain,
+                                    child: SizedBox(
+                                        width: _isRotate(_instructorController)
+                                            ? _instructorController
+                                                .value.size.height
+                                            : _instructorController
+                                                .value.size.width,
+                                        height: _isRotate(_instructorController)
+                                            ? _instructorController
+                                                .value.size.width
+                                            : _instructorController
+                                                .value.size.height,
+                                        child: RotatedBox(
+                                          quarterTurns: _instructorController
+                                                  .value.rotationCorrection ~/
+                                              270, // 90°単位で回転
+                                          child: VideoPlayer(
+                                              _instructorController),
+                                        )),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text("STUDENT",
-                              style: TextStyle(color: Colors.white)),
-                          AspectRatio(
-                            aspectRatio:
-                                _correctedAspectRatio(_studentController),
-                            child: Transform.rotate(
-                              angle:
-                                  _rotationAngle(_studentController), // 回転を適用
-                              child: FittedBox(
-                                fit: BoxFit.contain,
-                                child: SizedBox(
-                                    width: _isRotate(_studentController)
-                                        ? _studentController.value.size.height
-                                        : _studentController.value.size.width,
-                                    height: _isRotate(_studentController)
-                                        ? _studentController.value.size.width
-                                        : _studentController.value.size.height,
-                                    child: RotatedBox(
-                                      quarterTurns: _studentController
-                                              .value.rotationCorrection ~/
-                                          270, // 90°単位で回転
-                                      child: VideoPlayer(_studentController),
-                                    )),
+                        ),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text("STUDENT",
+                                  style: TextStyle(color: Colors.white)),
+                              AspectRatio(
+                                aspectRatio:
+                                    _correctedAspectRatio(_studentController),
+                                child: Transform.rotate(
+                                  angle: _rotationAngle(
+                                      _studentController), // 回転を適用
+                                  child: FittedBox(
+                                    fit: BoxFit.contain,
+                                    child: SizedBox(
+                                        width: _isRotate(_studentController)
+                                            ? _studentController
+                                                .value.size.height
+                                            : _studentController
+                                                .value.size.width,
+                                        height: _isRotate(_studentController)
+                                            ? _studentController
+                                                .value.size.width
+                                            : _studentController
+                                                .value.size.height,
+                                        child: RotatedBox(
+                                          quarterTurns: _studentController
+                                                  .value.rotationCorrection ~/
+                                              270, // 90°単位で回転
+                                          child:
+                                              VideoPlayer(_studentController),
+                                        )),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                )
-              : const CircularProgressIndicator(color: Colors.white),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-        floatingActionButton: FittedBox(
-          fit: BoxFit.fitWidth,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              FloatingActionButton(
-            heroTag: "playPauseBtn",
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            onPressed: () {
-              setState(() {
-                if (_instructorController.value.isPlaying) {
-                  _instructorController.pause();
-                  _studentController.pause();
-                } else {
-                  _instructorController.play();
-                  _studentController.play();
-                }
-              });
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _instructorController.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
-                ),
-                const Text(
-                  '再生/一時停止',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                ),
-              ],
+                  ),
+                  // 乖離率の高い部位を表示
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: _buildDiscrepancyAdvice(),
+                  ),
+                ],
+              )
+            : const CircularProgressIndicator(color: Colors.white),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: FittedBox(
+        fit: BoxFit.fitWidth,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            FloatingActionButton(
+              heroTag: "playPauseBtn",
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              onPressed: () {
+                setState(() {
+                  if (_instructorController.value.isPlaying) {
+                    _instructorController.pause();
+                    _studentController.pause();
+                  } else {
+                    _instructorController.play();
+                    _studentController.play();
+                  }
+                });
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _instructorController.value.isPlaying
+                        ? Icons.pause
+                        : Icons.play_arrow,
+                    color: Colors.white,
+                  ),
+                  const Text(
+                    '再生/一時停止',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          FloatingActionButton(
-            heroTag: "stopBtn",
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            onPressed: () {
-              _seekToStartAndPlay();
-              _instructorController.pause();
-              _studentController.pause();
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.stop,
-                  color: Colors.white,
-                ),
-                const Text(
-                  '停止',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                ),
-              ],
+            const SizedBox(width: 16),
+            FloatingActionButton(
+              heroTag: "stopBtn",
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              onPressed: () {
+                _seekToStartAndPlay();
+                _instructorController.pause();
+                _studentController.pause();
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.stop,
+                    color: Colors.white,
+                  ),
+                  const Text(
+                    '停止',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                ],
+              ),
             ),
-          ),
-            ],
-          ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDiscrepancyAdvice() {
+    final currentDiscrepancy = _getCurrentFrameDiscrepancyResult();
+    if (currentDiscrepancy == null ||
+        currentDiscrepancy.partDiscrepancies.isEmpty) {
+      return const Text(
+        '乖離データがありません',
+        style: TextStyle(color: Colors.white54, fontSize: 14),
+      );
+    }
+
+    // 乖離率の高い部位をソート
+    final sortedParts = currentDiscrepancy.partDiscrepancies.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // 最も乖離率の高い部位を取得
+    final highestDiscrepancyPart = sortedParts.first;
+
+    String adviceText = '';
+    if (highestDiscrepancyPart.value > 0.5) {
+      // 閾値は調整可能
+      adviceText =
+          'アドバイス: ${highestDiscrepancyPart.key} の動きが大きくズレています (${(highestDiscrepancyPart.value * 100).toStringAsFixed(0)}%)';
+    } else if (highestDiscrepancyPart.value > 0.3) {
+      adviceText =
+          'ヒント: ${highestDiscrepancyPart.key} の動きに少しズレがあります (${(highestDiscrepancyPart.value * 100).toStringAsFixed(0)}%)';
+    } else {
+      adviceText = '全体的に良い動きです！';
+    }
+
+    return Text(
+      adviceText,
+      style: const TextStyle(
+          color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+      textAlign: TextAlign.center,
     );
   }
 }

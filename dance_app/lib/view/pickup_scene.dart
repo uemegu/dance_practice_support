@@ -4,18 +4,21 @@ import 'dart:typed_data';
 import 'package:dance_app/data/scene.dart';
 import 'package:dance_app/util/storage_util.dart';
 import 'package:flutter/material.dart';
+import 'package:dance_app/data/frame_discrepancy_result.dart';
 
 class PickupScene extends StatelessWidget {
   final List<Scene> scenes;
   final String videoPath;
   final String instructorVideoPath;
   final int studentVideoOffset;
+  final List<FrameDiscrepancyResult> fullDiscrepancyResults;
 
   const PickupScene({
     required this.scenes,
     required this.videoPath,
     required this.instructorVideoPath,
     required this.studentVideoOffset,
+    required this.fullDiscrepancyResults,
     Key? key,
   }) : super(key: key);
 
@@ -47,6 +50,7 @@ class PickupScene extends StatelessWidget {
                       startSeconds: timeInSeconds - 2.0 < 0 ? 0 : timeInSeconds - 2.0,
                       endSeconds: timeInSeconds + 3.0,
                       studentVideoOffset: studentVideoOffset,
+                      fullDiscrepancyResults: fullDiscrepancyResults,
                     ),
                   ),
                 );
