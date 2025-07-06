@@ -188,7 +188,8 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     // 事前計算されたポーズデータを読み込む
     print("[_initializeVideos] Attempting to load precomputed data...");
     bool dataLoaded = await _loadPrecomputedData();
-    print("[_initializeVideos] dataLoaded: $dataLoaded, project.hasPrecomputedData: ${widget.project.hasPrecomputedData}");
+    print(
+        "[_initializeVideos] dataLoaded: $dataLoaded, project.hasPrecomputedData: ${widget.project.hasPrecomputedData}");
 
     if (!dataLoaded && widget.project.hasPrecomputedData) {
       // データがあるはずなのに読み込めなかった場合
@@ -225,9 +226,12 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     bool allFilesExist = await instructorFile.exists() &&
         await studentFile.exists() &&
         await discrepancyFile.exists();
-    print("[_loadPrecomputedData] instructorFile exists: ${await instructorFile.exists()}");
-    print("[_loadPrecomputedData] studentFile exists: ${await studentFile.exists()}");
-    print("[_loadPrecomputedData] discrepancyFile exists: ${await discrepancyFile.exists()}");
+    print(
+        "[_loadPrecomputedData] instructorFile exists: ${await instructorFile.exists()}");
+    print(
+        "[_loadPrecomputedData] studentFile exists: ${await studentFile.exists()}");
+    print(
+        "[_loadPrecomputedData] discrepancyFile exists: ${await discrepancyFile.exists()}");
     print("[_loadPrecomputedData] All files exist: $allFilesExist");
 
     if (allFilesExist) {
@@ -252,14 +256,16 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
 
         // 相違度データ読み込み
         final discrepancyContents = await discrepancyFile.readAsString();
-        final List<dynamic> discrepancyJsonData = jsonDecode(discrepancyContents);
+        final List<dynamic> discrepancyJsonData =
+            jsonDecode(discrepancyContents);
         fullDiscrepancyResults = discrepancyJsonData
             .map((json) =>
                 FrameDiscrepancyResult.fromJson(json as Map<String, dynamic>))
             .toList();
         discrepancyData =
             fullDiscrepancyResults.map((e) => e.overallDiscrepancy).toList();
-        print("[_loadPrecomputedData] Discrepancy data loaded. First 5 entries: ${fullDiscrepancyResults.take(5).toList()}");
+        print(
+            "[_loadPrecomputedData] Discrepancy data loaded. First 5 entries: ${fullDiscrepancyResults.take(5).toList()}");
 
         print("[_loadPrecomputedData] Data load successful.");
         return true;
@@ -394,7 +400,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                                           child: RotatedBox(
                                             quarterTurns: _instructorController!
                                                     .value.rotationCorrection ~/
-                                                270, // 90°単位で回転
+                                                -90, // 90°単位で回転
                                             child: VideoPlayer(
                                                 _instructorController!),
                                           )),
@@ -467,7 +473,7 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
                                           child: RotatedBox(
                                             quarterTurns: _studentController!
                                                     .value.rotationCorrection ~/
-                                                270, // 90°単位で回転
+                                                -90, // 90°単位で回転
                                             child: VideoPlayer(
                                                 _studentController!),
                                           )),
@@ -1236,7 +1242,8 @@ class _VideoComparisonScreenState extends State<VideoComparisonScreen> {
     // データ保存
     await StorageUtil.savePoseData(widget.project, instructorPoseData!, true);
     await StorageUtil.savePoseData(widget.project, studentPoseData!, false);
-    await StorageUtil.saveDiscrepancyData(widget.project, fullDiscrepancyResults);
+    await StorageUtil.saveDiscrepancyData(
+        widget.project, fullDiscrepancyResults);
     await StorageUtil.clearCacheImages();
 
     // プロジェクトの状態更新
